@@ -5,15 +5,23 @@ from plotManager import PlotManager
 from cep import real_cepstrum, complex_cepstrum
 from peakdetect import peakdet
 
-
 PL = PlotManager(6)
 
+DATA = {}
 
 #Important reference for cepstrum and signal genearation:
 #https://github.com/python-acoustics/python-acoustics/blob/master/acoustics/cepstrum.py
 
-def openFile(button):
-    print("File opened.")
+def record(button):
+    print("Recording started")
+    fundamental = app.getEntry("fundamental") or 100
+    duration = app.getEntry("duration") or 5
+    fs = getFS()
+    samples = int(fs*duration)
+    t = np.arange(samples) / fs
+    signal = sd.rec(samples, samplerate=fs, channels=1)
+    sd.wait()
+    analyzeWave(signal, t)
 
 def generateWave(button):
     fundamental = app.getEntry("fundamental") or 100
@@ -28,105 +36,67 @@ def generateWave(button):
     print(len(harmonics))
     signal = np.sin(2.0*np.pi*harmonics[:,None]*t).sum(axis=0)
     signal = 10*signal
-    #app.addPlot("time", t, signal)
-    fig_title = "spectral envelope"
-    PL.reset(fig_title)
+    analyzeWave(signal, t)
 
-    PL.addPlot("spectral envelope", "time", "time (seconds)", "amplitude", t, signal)
+def analyzeWave(signal, t):
+    fs = getFS()
 
     fftDict = getFFT(signal, fs)
-    PL.addPlot(
-        fig_title,
-        "frequency",
-        "frequency (hertz)",
-        "power",
-        fftDict['scale'],
-        fftDict['fft'])
-
     N = len(signal)
+
     cepsDict = getCepstrum(fftDict['full'], N)
+    cep_tup = complex_cepstrum(signal)
+
     for key in cepsDict:
         print(key, len(cepsDict[key]))
 
-    PL.addPlot(
-        fig_title,
-        "log no phase frequency",
-        "frequency (hertz)",
-        "log power",
-        fftDict['scale'],
-        cepsDict['halfLog']
-    )
-
-    cep_tup = complex_cepstrum(signal)
-
-    PL.addPlot(
-        fig_title,
-        "log phased frequency",
-        "frequency (hertz)",
-        "log power",
-        fftDict['scale'],
-        2/N * cep_tup[2][:N//2]
-    )
-
-    PL.addPlot(
-        fig_title,
-        "complex cepstrum",
-        "time (quefrency seconds)",
-        "amplitude",
-        t,
-        cep_tup[0],
-        x_limit=(0.0, 0.5),
-        y_limit=(-5., +10.)
-    )
-
-    PL.addPlot(
-        fig_title,
-        "power cepstrum",
-        "time (quefrency seconds)",
-        "amplitude",
-        t,
-        cepsDict['cepstrum'],
-        x_limit=(0.0, 0.5),
-        y_limit=(0.0, 0.2)
-    )
-
-    PL.showPlots()
     #PL.TurnOff()
 
     print("Wave being generated.")
-    # (frequencies, values) = findPeaks(cepsDict['cepstrum'], t, "Power peaks")
-    # # generateSourceFilter(cep_tup[0], t, "source - filter")
-    # # generateSourceFilter(cepsDict['cepstrum'], t, "source - filter power")
-    # #findPeaks(cep_tup[0], t, "Complex Peaks")
-    # PL.startPlot('discrete peaks', 1,1)
-    # PL.addPlotN(
-    #     'discrete peaks',
-    #     "Discrete Points",
-    #     "frequency",
-    #     "amplitude",
-    #     frequencies,
-    #     values,
-    #     "b+"
-    # )
-    print("Complex")
-    findFundamentalViaEarliestFilter(cep_tup[0], t)
+
+    print("Finding Complex Fundamental")
+    (freq, amplitude, separated_signal) = findFundamentalViaEarliestFilter(cep_tup[0], t)
+    DATA['complex_analysed'] = {
+        'peak_frequencies':freq,
+        'peak_amplitudes' : amplitude,
+        'separated_signal' : separated_signal
+    }
     print("Power")
-    findFundamentalViaEarliestFilter(cepsDict['cepstrum'], t)
+    (freq, amplitude, separated_signal) = findFundamentalViaEarliestFilter(cepsDict['cepstrum'], t)
+    DATA['power_analysed'] = {
+        'peak_frequencies':freq,
+        'peak_amplitudes' : amplitude,
+        'separated_signal' : separated_signal
+    }
+
+    #Set our Data variable
+    DATA['original'] = signal
+    DATA['t'] = t
+    DATA['fft'] = fftDict
+    DATA['complex_cepstrum'] = cep_tup
+    DATA['power_cepstrum'] = cepsDict
+    app.setLabel('guessValue', freq[0])
 
 def findFundamentalViaEarliestFilter(signal, quefrency_scale):
     #First we separate the signal into source and filter. The filter
     #is the bit at the beginning, the source after.
     separated_signal = getSourceFilter(signal, quefrency_scale)
-    print(separated_signal['source_scale'][0:20])
     #We look at the source part of the signal, i.e. the lower frequencies
     (frequencies, values) = findPeaks(separated_signal['source'], separated_signal['source_scale'])
+    if not frequencies:
+        print("No fundamental found.")
+        frequencies.append(-1)
+        values.append(-1)
+    else:
+        print(frequencies[0], values[0])
 
-    print(frequencies[0], values[1])
+    return (frequencies, values, separated_signal)
 
-    return (frequencies, values)
-
+#Separates the signal into a source and filter. Returns
+#a dictionary containing the source, a scale for source,
+#the filter and a scale for the filter.
 def getSourceFilter(signal, quefrency_scale):
-    fs = int(app.getEntry("Sampling Frequency")) or 8000
+    fs = getFS()
 
     #In seconds, the earliest point on the scale
     lowestQuefrency = 2.0 / fs
@@ -166,6 +136,10 @@ def getSourceFilter(signal, quefrency_scale):
         'filter_scale' : filter_scale
     }
 
+#Finds peaks, returns a tuple with two lists,
+#the first are the frequencies at which peaks occur
+#and the second their
+#corresponding values
 def findPeaks(signal, scale):
     frequency_scale = [1.0/x for x in scale]
     peaks = peakdet(signal, 0.01, frequency_scale)[0]
@@ -213,30 +187,13 @@ def findPeaksMultiple(signal, scale, figTitle):
 
     print(figTitle + '---------\\')
 
-def generateSourceFilter(cepstrum, scale, figTitle):
-    fs = int(app.getEntry("Sampling Frequency")) or 8000
-    highestFreq = fs / 2
-    #The smallest number that we deem a valid point before which is likely Noise
-    lowestQuefrency = 1.0 / highestFreq
+def generateSourceFilterPlot(dataDic, figTitle):
 
-    cutOff = app.getEntry('Source Cut Off Frequency') or 170.0
+    source = dataDic['source']
+    source_scale = dataDic['source_scale']
 
-    timePeriod = 1.0/cutOff
-    cutOffIndex = len(scale) - 1
-    startIndex = None
-    for index, value in enumerate(scale):
-        if value >= timePeriod:
-            cutOffIndex = index
-            break
-        if startIndex is None and value >= lowestQuefrency:
-            startIndex = index
-
-
-    source = cepstrum[startIndex:cutOffIndex]
-    source_scale = scale[startIndex:cutOffIndex]
-
-    _filter = cepstrum[cutOffIndex:]
-    _filter_scale = scale[cutOffIndex:]
+    _filter = dataDic['filter']
+    _filter_scale = dataDic['filter_scale']
 
     #PL.reset(figTitle)
     PL.startPlot(figTitle, 2,2)
@@ -258,12 +215,11 @@ def generateSourceFilter(cepstrum, scale, figTitle):
         _filter
     )
 
-
     source = np.abs(source)
     _filter = np.abs(_filter)
 
-    source_fft_dict = getFFT(source, fs)
-    filter_fft_dict = getFFT(_filter, fs)
+    source_fft_dict = getFFT(source, getFS())
+    filter_fft_dict = getFFT(_filter, getFS())
 
     PL.addPlotN(
         figTitle,
@@ -284,31 +240,16 @@ def generateSourceFilter(cepstrum, scale, figTitle):
     )
     PL.showPlots()
 
-    createDiscrete('Discrete Points From filter', _filter, _filter_scale)
-
-def createDiscrete(figTitle, cepstrum, scale):
-
-    delta = 0.01
-
-    cepstrum = np.abs(cepstrum)
-    peak_tuples = peakdet(cepstrum, delta)[0]
-    indices = [x[0] for x in peak_tuples]
-    new_scale = [1.0/x for x in scale]
-    y = np.zeros(len(cepstrum))
-
-    peak_frequencies = []
-    for peak in peak_tuples:
-        y[int(peak[0])] = peak[1]
-        # peak_frequencies.append( new_scale[int(peak[0])] )
+def createPeaks(frequencies, peaks, figTitle):
 
     PL.startPlot(figTitle, 1,1)
     PL.addPlotN(
         figTitle,
-        "Discrete Points",
+        "Peaks vs frequency",
         "frequency",
-        "amplitude",
-        new_scale,
-        y,
+        "cepstrum amplitude",
+        frequencies,
+        peaks,
         "b+"
     )
 
@@ -375,9 +316,8 @@ def checkIfMultiple(number1, number2, error=0.001):
 def playSound(signal, fs):
     sd.play(signal, fs)
 
-def stopSound(signal, fs):
+def stopSound(button):
     sd.stop()
-
 
 def fillInDefaults(app):
     defaults = {
@@ -390,31 +330,163 @@ def fillInDefaults(app):
     for key in defaults:
         app.setEntryDefault(key, defaults[key])
 
+def getFS():
+    return int(app.getEntry("Sampling Frequency")) or 8000
+
+def playOrig(button):
+    if 'original' not in DATA:
+        return
+    playSound(DATA['original'], getFS())
+
+def playCeps(button, scaleAmplitude=True):
+    if 'power_cepstrum' not in DATA:
+        return
+    playSound(DATA['power_cepstrum']['cepstrum'], getFS())
+    # if scaleAmplitude:
+    #     playSound(10 ** DATA['power_cepstrum']['cepstrum'], getFS())
+    # else:
+    #     playSound(DATA['power_cepstrum']['cepstrum'], getFS())
+
+def playSource(button):
+    pass
+
+def playFilter(button):
+    pass
+
+def plotOrig(button):
+
+    # DATA['original'] = signal
+    # DATA['fft'] = fftDict
+    # DATA['complex_cepstrum'] = cep_tup
+    # DATA['power_cepstrum'] = cepsDict
+    if 'original' not in DATA:
+        return
+
+    t = DATA['t']
+    fftDict = DATA['fft']
+    cep_tup = DATA['complex_cepstrum']
+    N = len(DATA['original'])
+
+    fig_title = "Spectral Envelope"
+    PL.reset(fig_title)
+    PL.addPlot(
+        fig_title,
+         "time",
+         "time (seconds)",
+         "amplitude",
+          t, DATA['original'])
+
+    PL.addPlot(
+        fig_title,
+        "frequency",
+        "frequency (hertz)",
+        "power",
+        fftDict['scale'],
+        fftDict['fft'])
+
+    PL.addPlot(
+        fig_title,
+        "log no phase frequency",
+        "frequency (hertz)",
+        "log power",
+        fftDict['scale'],
+        DATA['power_cepstrum']['halfLog']
+    )
+
+    PL.addPlot(
+        fig_title,
+        "log phased frequency",
+        "frequency (hertz)",
+        "log power",
+        fftDict['scale'],
+        2/N * cep_tup[2][:N//2]
+    )
+
+    PL.addPlot(
+        fig_title,
+        "complex cepstrum",
+        "time (quefrency seconds)",
+        "amplitude",
+        t,
+        cep_tup[0],
+        # x_limit=(0.0, 0.5),
+        # y_limit=(-5., +10.)
+    )
+
+    PL.addPlot(
+        fig_title,
+        "power cepstrum",
+        "time (quefrency seconds)",
+        "amplitude",
+        t,
+        DATA['power_cepstrum']['cepstrum'],
+        # x_limit=(0.0, 0.5),
+        # y_limit=(0.0, 0.2)
+    )
+
+    PL.showPlots()
+
+def plotPower(button):
+    generateSourceFilterPlot(DATA['power_analysed']['separated_signal'], "power source filter")
+
+def plotComplex(button):
+    generateSourceFilterPlot(DATA['complex_analysed']['separated_signal'], "complex source filter")
+
+def plotPeaks(button):
+    createPeaks(
+        DATA['complex_analysed']['peak_frequencies'],
+        DATA['complex_analysed']['peak_amplitudes'],
+        "Complex Peaks vs Frequency")
+
+    createPeaks(
+        DATA['power_analysed']['peak_frequencies'],
+        DATA['power_analysed']['peak_amplitudes'],
+        "Power Peaks vs Frequency")
+
+
 app = gui("Frequency Estimation and Envelope Estimation")
 app.setSticky("news")
 app.setExpand("both")
 app.setFont(20)
 app.addLabel("title", "Spectral Envelope Estimator")
 
-app.addLabel("GenerationL", "Either open a file or generate a wave", row=0, column=0, colspan=2)
-app.addButton("Open File", func=openFile, row=1, column=0)
+app.addLabel("GenerationL", "Either open a file or generate a wave", row=0, column=0, colspan=4)
+app.addButton("Record Audio", func=record, row=1, column=0)
 app.addButton("Generate Wave", func=generateWave, row=1, column=1)
 
-app.addHorizontalSeparator(2,0,3, colour="blue")
-app.addLabel("subHeading1", "Generation Parameters", row=3, colspan=3)
+app.addHorizontalSeparator(2,0,4, colour="blue")
+app.addLabel("subHeading1", "Generation Parameters", row=3, colspan=4)
 app.addLabelNumericEntry("fundamental", row=4, column=0)
 app.addLabelNumericEntry("number of sins", row=4, column=1)
 app.addLabelNumericEntry("duration", row=4, column=2)
 
-app.addHorizontalSeparator(5,0,2, colour="blue")
-app.addLabel("subHeading2", "Analysis Parameters", row=5, colspan=2)
-app.addLabelNumericEntry("Sampling Frequency", row=6, column=1)
+app.addHorizontalSeparator(5,0,4, colour="blue")
+app.addLabel("subHeading2", "Analysis Parameters", row=6, colspan=4)
+app.addLabelNumericEntry("Sampling Frequency", row=7, column=1)
 
-app.addHorizontalSeparator(7,0,2, colour="blue")
-app.addLabel("subHeading3", "Cepstrum Analysis Parameters", row=8, colspan=2)
-app.addLabelNumericEntry("Source Cut Off Frequency", row=9, column=1)
+app.addHorizontalSeparator(8,0,4, colour="blue")
+app.addLabel("subHeading3", "Cepstrum Analysis Parameters", row=9, colspan=4)
+app.addLabelNumericEntry("Source Cut Off Frequency", row=10, column=1)
 
-#app.addButtons(["Open File",  "Generate Wave"], "row=0" )
+app.addHorizontalSeparator(11,0,4, colour="blue")
+app.addLabel("subHeading4", "Guessed Parameters", row=12, colspan=4)
+app.addLabel("guesslabel", "Guessed Fundamental", row=13, column=0, colspan=2)
+app.addLabel("guessValue", "-", row=13, column=2, colspan=2)
+
+app.addHorizontalSeparator(14,0,4, colour="blue")
+app.addLabel("subHeading5", "Playback", row=15, colspan=4)
+app.addButton("Play Original Sound", func=playOrig, row=16, column=0)
+app.addButton("Play Cepstral", func=playCeps, row=16, column=1)
+app.addButton("Play Source", func=playSource, row=16, column=2)
+app.addButton("Play Filter", func=playFilter, row=16, column=3)
+app.addButton("STOP", func=stopSound, row=17, column=1, colspan=2)
+
+app.addHorizontalSeparator(18,0,4, colour="blue")
+app.addLabel("subHeading6", "Plotting", row=19, colspan=4)
+app.addButton("Plot Original Signal and Cepstrum", func=plotOrig, row=20, column=0)
+app.addButton("Plot Complex Source-Filter", func=plotComplex, row=20, column=1)
+app.addButton("Plot Power Source-Filter", func=plotPower, row=20, column=2)
+app.addButton("Plot Peaks", func=plotPeaks, row=20, column=3)
 
 fillInDefaults(app)
 
