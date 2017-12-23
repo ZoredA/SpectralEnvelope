@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 
 class PlotManager():
     def __init__(self, plotCount):
+        self.off = False
         self.plots = {}
 
         self.plotCount = plotCount
@@ -13,6 +14,7 @@ class PlotManager():
 
     def addPlot(self, fig_title, axis_title, x_label, y_label, x, y, color='-r',
         x_limit=None, y_limit=None):
+        if self.off: return
         if fig_title not in self.currentPlots:
             self.currentPlots[fig_title] = {
                 'row':1,
@@ -35,15 +37,17 @@ class PlotManager():
 
 
     def startPlot(self, fig_title, rows, columns, argsDict=None):
+        if self.off: return
         figDict = {
             'num':fig_title,
             'edgecolor':'blue'
         }
         if argsDict is not None:
             argsDict = dict(figDict, **argsDict)
-            fig, axis = plt.subplots(rows, columns, **argsDict)
+            fig, axis = plt.subplots(rows, columns, squeeze=False, **argsDict)
         else:
-            fig, axis = plt.subplots(rows, columns, **figDict)
+            fig, axis = plt.subplots(rows, columns, squeeze=False, **figDict)
+        print(axis)
         self.plots[fig_title] = {
             'figure':fig,
             'axis':axis,
@@ -55,6 +59,7 @@ class PlotManager():
 
     def addPlotN(self, fig_title, axis_title, x_label, y_label, x, y, color='-r',
         x_limit=None, y_limit=None):
+        if self.off: return
         if fig_title not in self.plots:
             raise Exception("Need to call startplot before addplot")
         info = self.plots[fig_title]
@@ -81,15 +86,20 @@ class PlotManager():
 
 
     def showPlots(self):
+        if self.off: return
         plt.show()
 
     def reset(self, fig_title):
+        if self.off: return
         fig = plt.figure(fig_title)
         plt.clf()
         self.currentPlots[fig_title] = {
             'row':1,
             'column':1
         }
+
+    def TurnOff(self):
+        self.off = True
 
 if __name__ == "__main__":
     import numpy as np
