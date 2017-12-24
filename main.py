@@ -347,10 +347,10 @@ def playCeps(button, scaleAmplitude=True):
     #     playSound(DATA['power_cepstrum']['cepstrum'], getFS())
 
 def playSource(button):
-    pass
+    playSound(DATA['power_analysed']['separated_signal']['source'], getFS())
 
 def playFilter(button):
-    pass
+    playSound(DATA['power_analysed']['separated_signal']['filter'], getFS())
 
 def plotOrig(button):
 
