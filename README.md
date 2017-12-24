@@ -15,3 +15,5 @@ https://gist.github.com/endolith/25086
 http://appjar.info/pythonBasics/
 
 The fundamental estimation works for the power cepstrum, but not the complex cepstrum. 
+
+Note: Audio playback of the cepstrum/filter/source is not good, which is probably expected, but perhaps a problem.
