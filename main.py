@@ -8,11 +8,12 @@ from peakdetect import peakdet
 PL = PlotManager(6)
 
 DATA = {}
-
+microphone = False
 #Important reference for cepstrum and signal genearation:
 #https://github.com/python-acoustics/python-acoustics/blob/master/acoustics/cepstrum.py
 
 def record(button):
+    microphone = True
     print("Recording started")
     fundamental = app.getEntry("fundamental") or 100
     duration = app.getEntry("duration") or 5
@@ -24,6 +25,7 @@ def record(button):
     analyzeWave(signal, t)
 
 def generateWave(button):
+    microphone = False
     fundamental = app.getEntry("fundamental") or 100
     number_of_sins = int(app.getEntry("number of sins")) or 40
     duration = app.getEntry("duration") or 5
@@ -106,9 +108,6 @@ def getSourceFilter(signal, quefrency_scale):
     cutOffIndex = len(quefrency_scale) - 1
     startIndex = None
 
-    print(lowestQuefrency)
-    print(timePeriod)
-
     #We can't have a cut off frequency higher than the highestFreq
     #possible frequency
     if lowestQuefrency > timePeriod:
@@ -125,7 +124,7 @@ def getSourceFilter(signal, quefrency_scale):
     _filter = signal[startIndex:cutOffIndex]
     filter_scale = quefrency_scale[startIndex:cutOffIndex]
 
-    #The lower frequencies, the right of the scale
+    #The lower frequencies, the further right of the scale
     source = signal[cutOffIndex:]
     source_scale = quefrency_scale[cutOffIndex:]
 
@@ -402,27 +401,47 @@ def plotOrig(button):
         2/N * cep_tup[2][:N//2]
     )
 
-    PL.addPlot(
-        fig_title,
-        "complex cepstrum",
-        "time (quefrency seconds)",
-        "amplitude",
-        t,
-        cep_tup[0],
-        # x_limit=(0.0, 0.5),
-        # y_limit=(-5., +10.)
-    )
+    #We just set the range to be more limited when not using a mic.
+    if microphone is False:
+        PL.addPlot(
+            fig_title,
+            "complex cepstrum",
+            "time (quefrency seconds)",
+            "amplitude",
+            t,
+            cep_tup[0],
+            x_limit=(0.0, 0.5),
+            y_limit=(-5., +10.)
+        )
 
-    PL.addPlot(
-        fig_title,
-        "power cepstrum",
-        "time (quefrency seconds)",
-        "amplitude",
-        t,
-        DATA['power_cepstrum']['cepstrum'],
-        # x_limit=(0.0, 0.5),
-        # y_limit=(0.0, 0.2)
-    )
+        PL.addPlot(
+            fig_title,
+            "power cepstrum",
+            "time (quefrency seconds)",
+            "amplitude",
+            t,
+            DATA['power_cepstrum']['cepstrum'],
+            x_limit=(0.0, 0.5),
+            y_limit=(0.0, 0.2)
+        )
+    else:
+        PL.addPlot(
+            fig_title,
+            "complex cepstrum",
+            "time (quefrency seconds)",
+            "amplitude",
+            t,
+            cep_tup[0]
+        )
+
+        PL.addPlot(
+            fig_title,
+            "power cepstrum",
+            "time (quefrency seconds)",
+            "amplitude",
+            t,
+            DATA['power_cepstrum']['cepstrum']
+        )
 
     PL.showPlots()
 

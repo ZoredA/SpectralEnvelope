@@ -10,6 +10,7 @@ class PlotManager():
 
         self.plotCount = plotCount
         self.currentPlots = {}
+        #plt.subplots_adjust(left=0.11, bottom=0.07, right=0.9, top=0.95, wspace=0.20, hspace=0.95)
         plt.ion()
 
     def addPlot(self, fig_title, axis_title, x_label, y_label, x, y, color='-r',
@@ -47,7 +48,6 @@ class PlotManager():
             fig, axis = plt.subplots(rows, columns, squeeze=False, **argsDict)
         else:
             fig, axis = plt.subplots(rows, columns, squeeze=False, **figDict)
-        print(axis)
         self.plots[fig_title] = {
             'figure':fig,
             'axis':axis,
