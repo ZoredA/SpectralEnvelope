@@ -8,7 +8,9 @@ Requires:
 
 Included in the repository are:
 https://github.com/python-acoustics/python-acoustics/blob/master/acoustics/cepstrum.py
+
 https://gist.github.com/endolith/25086
+
 http://appjar.info/pythonBasics/
 
 
