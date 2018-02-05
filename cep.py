@@ -87,8 +87,9 @@ def complex_cepstrum(x, n=None):
         ndelay = np.array(np.round(unwrapped[...,center]/np.pi))
         unwrapped -= np.pi * ndelay[...,None] * np.arange(samples) / center
         return unwrapped, ndelay
-
+    print("in complex len x: ", len(x))
     spectrum = np.fft.fft(x, n=n)
+    print("in complex len spectrum: ", len(spectrum))
     unwrapped_phase, ndelay = _unwrap(np.angle(spectrum))
     log_spectrum = np.log(np.abs(spectrum)) + 1j*unwrapped_phase
     ceps = np.fft.ifft(log_spectrum).real
