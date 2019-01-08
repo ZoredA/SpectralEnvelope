@@ -12,7 +12,7 @@ https://github.com/python-acoustics/python-acoustics/blob/master/acoustics/cepst
 
 https://gist.github.com/endolith/25086
 
-http://appjar.info/pythonBasics/
+http://appjar.info/
 
 The fundamental estimation works for the power cepstrum, but not the complex cepstrum. 
 
